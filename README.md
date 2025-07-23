@@ -39,13 +39,13 @@ async with sqsi.QueueIterator(uri=..., deletion_mode='callback') as queue:
 You can also specify a way to transform the input from SQS, if you wish to process items other than strings:
 
 ```python
-async with sqsi.QueueIterator(uri=..., transformer=json.loads, transformer_exceptions='skip') as queue:
+async with sqsi.QueueIterator(uri=..., transformer=json.loads, transformer_exceptions='skip-delete') as queue:
     async for item in queue:
         ... # item is a JSON object here
 ```
 
-In this case, we use `transformer_exceptions='skip'` to silence JSON exceptions and skip the item when it does not
-parse.
+In this case, we use `transformer_exceptions='skip-delete'` to silence JSON exceptions and skip the item (and delete it
+from the queue) when it does not parse.
 
 If you need to process messages in chunks of a certain size, a builtin method is provided to generate those chunks.
 
