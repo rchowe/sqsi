@@ -1,11 +1,11 @@
 [project]
 name = "sqsi"
-version = "0.1.4"
+version = "0.1.5"
 description = "Async Iterators for SQS Queues"
 authors = [
     {name = "Robert Howe", email = "rc@rchowe.com"},
 ]
-dependencies = ["aiobotocore>=2.23.1"]
+dependencies = ["aiobotocore>=2.23.1", "types-aiobotocore[sqs]>=2.23.1"]
 requires-python = ">3.10.0"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,7 +19,3 @@ Issues = "https://github.com/rchowe/sqsi/issues"
 distribution = true
 
 
-[dependency-groups]
-dev = [
-    "types-aiobotocore[sqs]>=2.23.1",
-]
