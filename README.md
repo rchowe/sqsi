@@ -1,3 +1,5 @@
+[![pypi](https://img.shields.io/pypi/v/sqsi)](http://pypi.org/p/sqsi)
+
 This project (**sqsi**, short for SQS iterable, pronounced "squeezy") is a way to access SQS queues as async iterators
 in Python, because I am tired of writing custom SQS logic every time I just want to read stuff out of a queue.
 
@@ -42,7 +44,7 @@ async with sqsi.QueueIterator(uri=..., transformer=json.loads, transformer_excep
         ... # item is a JSON object here
 ```
 
-In this case, we use `transformer_exceptions='silent'` to silence JSON exceptions and skip the item when it does not
+In this case, we use `transformer_exceptions='skip'` to silence JSON exceptions and skip the item when it does not
 parse.
 
 If you need to process messages in chunks of a certain size, a builtin method is provided to generate those chunks.
