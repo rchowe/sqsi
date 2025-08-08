@@ -12,10 +12,10 @@ from types_aiobotocore_sqs.type_defs import ReceiveMessageRequestTypeDef, Messag
 logger = logging.getLogger(__name__)
 
 
-T = TypeVar("T", default=str)
+T = TypeVar("T")
 
 
-class QueueIterator[T] (AsyncIterator[T]):
+class QueueIterator (AsyncIterator[T]):
     """
     An iterable over an SQS queue.
     """
