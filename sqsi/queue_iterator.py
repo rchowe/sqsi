@@ -34,7 +34,7 @@ class QueueIterator (AsyncIterator[T]):
         receive_message_options: Optional[ReceiveMessageRequestTypeDef] = None,
         transformer: Optional[Callable[[str], T]] = None,
         transformer_exceptions: TransformerExceptionBehavior = 'throw-exception',
-        transformer_exception_logger: Optional[Callable[[str]]] = None,
+        transformer_exception_logger: Optional[Callable[[str], None]] = None,
     ):
         self.queue_uri = uri
         self._buffer: asyncio.Queue[MessageTypeDef] = asyncio.Queue()
