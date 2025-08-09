@@ -2,9 +2,9 @@ import asyncio
 import asyncio.exceptions
 import logging
 import itertools
-from typing import Any, Callable, Literal, Optional, TypeVar
-from aiobotocore.session import AioSession
+from typing import Callable, Literal, Optional, TypeAlias, TypeVar
 from collections.abc import AsyncIterator
+from aiobotocore.session import AioSession
 from types_aiobotocore_sqs import SQSClient
 from types_aiobotocore_sqs.type_defs import ReceiveMessageRequestTypeDef, MessageTypeDef
 
@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+TransformerExceptionBehavior: TypeAlias = Literal[
+    'skip', 'skip-delete', 'return-none', 'return-exception', 'throw-exception'
+]
 
 class QueueIterator (AsyncIterator[T]):
     """
@@ -30,7 +33,8 @@ class QueueIterator (AsyncIterator[T]):
         stop_on_empty_response: bool = False,
         receive_message_options: Optional[ReceiveMessageRequestTypeDef] = None,
         transformer: Optional[Callable[[str], T]] = None,
-        transformer_exceptions: Literal['skip', 'skip-delete' 'return-none', 'return-exception', 'throw-exception'] = 'throw-exception',
+        transformer_exceptions: TransformerExceptionBehavior = 'throw-exception',
+        transformer_exception_logger: Optional[Callable[[str]]] = None,
     ):
         self.queue_uri = uri
         self._buffer: asyncio.Queue[MessageTypeDef] = asyncio.Queue()
@@ -42,12 +46,14 @@ class QueueIterator (AsyncIterator[T]):
         self._stop_on_empty_response: Optional[bool] = stop_on_empty_response or False
         self._transformer = transformer
         self._transformer_exceptions = transformer_exceptions
+        self._transformer_exception_logger = transformer_exception_logger
 
         try:
             self._buffer_size = int(buffer_size or 1)
             if self._buffer_size <= 0 or self._buffer_size > 10:
                 raise ValueError("Buffer size must be an integer between 0 and 10")
         except (TypeError, ValueError):
+            # pylint: disable-next=raise-missing-from
             raise ValueError("Invalid value for `buffer_size` in sqsi.QueueIterator constructor()")
 
         self._receive_message_options: ReceiveMessageRequestTypeDef = {
@@ -63,7 +69,7 @@ class QueueIterator (AsyncIterator[T]):
         self._previous_receipt_handle = None
 
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._sqs_client:
             try:
@@ -83,10 +89,12 @@ class QueueIterator (AsyncIterator[T]):
                 ReceiptHandle=self._previous_receipt_handle,
             )
             self._previous_receipt_handle = None
-        
+
         return await self.get_next_item(self._deletion_mode)
 
     async def get_next_item(self, deletion_mode: Literal['auto', 'handle', 'callback']):
+        """ Gets the next item in the queue. """
+
         while True:
             while self._buffer.empty():
                 response = await self._sqs_client.receive_message(**{
@@ -100,12 +108,12 @@ class QueueIterator (AsyncIterator[T]):
                         raise StopAsyncIteration
                     else:
                         continue
-                
+
                 for message in messages:
                     self._buffer.put_nowait(message)
 
             message = self._buffer.get_nowait()
-            
+
             body = message.get('Body')
             receipt_handle = message.get('ReceiptHandle')
 
@@ -113,10 +121,12 @@ class QueueIterator (AsyncIterator[T]):
             if self._transformer:
                 try:
                     item = self._transformer(body)
-                except Exception as e:
+                except Exception as e: # pylint: disable=broad-exception-caught
+                    if self._transformer_exception_logger:
+                        self._transformer_exception_logger(f"Exception in transformer: {e}")
                     if self._transformer_exceptions == 'skip':
                         continue
-                    if self._transformer_exceptions == 'skip-delete':
+                    elif self._transformer_exceptions == 'skip-delete':
                         await self._mark_complete(receipt_handle)
                         continue
                     elif self._transformer_exceptions == 'return-exception':
@@ -144,12 +154,12 @@ class QueueIterator (AsyncIterator[T]):
         """
         Mark a message as successfully processed, deleting it from the queue.
 
-        Note that you only need to use `mark_complete()` on queues where the deletion mode is `handle`. Other queue
-        types will have different deletion behaviors.
+        Note that you only need to use `mark_complete()` on queues where the deletion mode is
+        `handle`. Other queue types will have different deletion behaviors.
         """
         if self._deletion_mode != "handle":
             logger.warning("mark_complete() was called on a queue iterator with a deletion mode other than `handle`.")
-        
+
         self._mark_complete(*receipt_handles)
 
     async def _mark_complete(self, *receipt_handles):
@@ -165,14 +175,15 @@ class QueueIterator (AsyncIterator[T]):
                     for index, receipt_handle in enumerate(handle_chunk)
                 ]
             )
-    
+
     async def chunks(self, size: int, timeout: Optional[float] = None):
         """
         Break the iterator into chunks of maximum size `size`.
 
-        Note that it is strongly recommended to use this on an iterator with `deletion_mode` set to `handle` or
-        `callback`. Using this on an iterator set to `auto` will only delete items from the queue if the whole chunk
-        completes successfully, which may lead to counter-intuitive behavior.
+        Note that it is strongly recommended to use this on an iterator with `deletion_mode` set to
+        `handle` or `callback`. Using this on an iterator set to `auto` will only delete items from
+        the queue if the whole chunk completes successfully, which may lead to counter-intuitive
+        behavior.
 
         ## Usage
 
@@ -206,14 +217,15 @@ class QueueIterator (AsyncIterator[T]):
         """
 
         finished = False
-        last_batch_deletion_handles = None
+        last_batch_deletion_handles: list | None = None
         while not finished:
             start_time = asyncio.get_event_loop().time()
             results = []
 
             if self._deletion_mode == 'auto' and last_batch_deletion_handles:
+                # pylint: disable-next=not-an-iterable
                 await self._mark_complete(*last_batch_deletion_handles)
-            
+
             for _ in range(size):
                 wait_time = None
                 if timeout is not None:
@@ -227,12 +239,14 @@ class QueueIterator (AsyncIterator[T]):
                     deletion_mode = 'handle'
 
                 try:
-                    results.append(await asyncio.wait_for(self.get_next_item(deletion_mode), wait_time))
+                    results.append(
+                        await asyncio.wait_for(self.get_next_item(deletion_mode), wait_time),
+                    )
                 except TimeoutError:
                     break
                 except StopAsyncIteration:
                     finished = True
-            
+
             if results:
                 if self._deletion_mode == 'auto':
                     yield [item for item, _ in results]
