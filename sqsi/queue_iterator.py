@@ -160,7 +160,7 @@ class QueueIterator (AsyncIterator[T]):
         if self._deletion_mode != "handle":
             logger.warning("mark_complete() was called on a queue iterator with a deletion mode other than `handle`.")
 
-        self._mark_complete(*receipt_handles)
+        await self._mark_complete(*receipt_handles)
 
     async def _mark_complete(self, *receipt_handles):
         iterator = iter(receipt_handles)
