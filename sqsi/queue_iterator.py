@@ -176,7 +176,7 @@ class QueueIterator (AsyncIterator[T]):
                 ]
             )
 
-    async def chunks(self, size: int, timeout: Optional[float] = None):
+    async def chunks(self, size: int, timeout: Optional[float] = None, include_empty_on_timeout: bool = False):
         """
         Break the iterator into chunks of maximum size `size`.
 
@@ -253,6 +253,8 @@ class QueueIterator (AsyncIterator[T]):
                     last_batch_deletion_handles = [handle for _, handle in results]
                 else:
                     yield results
+            elif include_empty_on_timeout:
+                yield results
 
         if self._deletion_mode == 'auto' and last_batch_deletion_handles:
             await self._mark_complete(*last_batch_deletion_handles)
